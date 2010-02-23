@@ -39,7 +39,14 @@ import freenet.support.io.Closer;
  * @author xor (xor@freenetproject.org), Julien Cornuwel (batosai@freenetproject.org)
  */
 public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
-	
+
+	private static volatile boolean logMINOR;
+	private static volatile boolean logDEBUG;
+
+	static {
+		Logger.registerClass(IdentityFetcher.class);
+	}
+
 	private static final long PROCESS_COMMANDS_DELAY = 5 * 1000;
 	
 	private final WoT mWoT;
@@ -176,7 +183,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	private synchronized void deleteAllCommands() {
 		synchronized(mDB.lock()) {
 			try {
-				Logger.debug(this, "Deleting all identity fetcher commands ...");
+				if (logDEBUG) Logger.debug(this, "Deleting all identity fetcher commands ...");
 				
 				int amount = 0;
 				
@@ -185,12 +192,15 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 					++amount;
 				}
 				
-				Logger.debug(this, "Deleted " + amount + " commands.");
+				if (logDEBUG) Logger.debug(this, "Deleted " + amount + " commands.");
 				
-				mDB.commit(); Logger.debug(this, "COMMITED.");
+				mDB.commit();
+				if (logDEBUG) Logger.debug(this, "COMMITED.");
 			}
 			catch(RuntimeException e) {
-				mDB.rollback(); mDB.purge(); Logger.error(this, "ROLLED BACK!", e);
+				mDB.rollback();
+				mDB.purge();
+				Logger.error(this, "ROLLED BACK!", e);
 				throw e;
 			}
 		}
@@ -201,17 +211,17 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	}
 	
 	public void storeStartFetchCommandWithoutCommit(String identityID) {
-		Logger.debug(this, "Start fetch command received for " + identityID);
+		if (logDEBUG) Logger.debug(this, "Start fetch command received for " + identityID);
 		
 		try {
 			getCommand(AbortFetchCommand.class, identityID).deleteWithoutCommit(mDB);
-			Logger.debug(this, "Deleting abort fetch command for " + identityID);
+			if (logDEBUG) Logger.debug(this, "Deleting abort fetch command for " + identityID);
 		}
 		catch(NoSuchCommandException e) { }
 		
 		try {
 			getCommand(StartFetchCommand.class, identityID);
-			Logger.debug(this, "Start fetch command already in queue!");
+			if (logDEBUG) Logger.debug(this, "Start fetch command already in queue!");
 		}
 		catch(NoSuchCommandException e) {
 			new StartFetchCommand(identityID).storeWithoutCommit(mDB);
@@ -220,17 +230,17 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	}
 	
 	public void storeAbortFetchCommandWithoutCommit(Identity identity) {
-		Logger.debug(this, "Abort fetch command received for " + identity);
+		if (logDEBUG) Logger.debug(this, "Abort fetch command received for " + identity);
 		
 		try {
 			getCommand(StartFetchCommand.class, identity).deleteWithoutCommit(mDB);
-			Logger.debug(this, "Deleting start fetch command for " + identity);
+			if (logDEBUG) Logger.debug(this, "Deleting start fetch command for " + identity);
 		}
 		catch(NoSuchCommandException e) { }
 		
 		try {
 			getCommand(AbortFetchCommand.class, identity);
-			Logger.debug(this, "Abort fetch command already in queue!");
+			if (logDEBUG) Logger.debug(this, "Abort fetch command already in queue!");
 		}
 		catch(NoSuchCommandException e) {
 			new AbortFetchCommand(identity).storeWithoutCommit(mDB);
@@ -239,7 +249,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	}
 	
 	public void storeUpdateEditionHintCommandWithoutCommit(String identityID) {
-		Logger.debug(this, "Update edition hint command received for " + identityID);
+		if (logDEBUG) Logger.debug(this, "Update edition hint command received for " + identityID);
 		
 		try {
 			getCommand(AbortFetchCommand.class, identityID);
@@ -248,7 +258,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 		catch(NoSuchCommandException e1) {
 			try {
 				getCommand(UpdateEditionHintCommand.class, identityID);
-				Logger.debug(this, "Update edition hint command already in queue!");
+				if (logDEBUG) Logger.debug(this, "Update edition hint command already in queue!");
 			}
 			catch(NoSuchCommandException e2) {
 				new UpdateEditionHintCommand(identityID).storeWithoutCommit(mDB);
@@ -266,7 +276,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 		synchronized(this) {
 		synchronized(mDB.lock()) {
 			try  {
-				Logger.debug(this, "Processing identity fetcher commands ...");
+				if (logDEBUG) Logger.debug(this, "Processing identity fetcher commands ...");
 				
 				for(IdentityFetcherCommand command : getCommands(AbortFetchCommand.class)) {
 					try {
@@ -297,11 +307,14 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 					
 				}
 				
-				Logger.debug(this, "Processing finished.");
+				if (logDEBUG) Logger.debug(this, "Processing finished.");
 				
-				mDB.commit(); Logger.debug(this, "COMMITED.");
+				mDB.commit();
+				if (logDEBUG) Logger.debug(this, "COMMITED.");
 			} catch(RuntimeException e) {
-				mDB.rollback(); mDB.purge(); Logger.error(this, "ROLLED BACK!", e);
+				mDB.rollback();
+				mDB.purge();
+				Logger.error(this, "ROLLED BACK!", e);
 			}
 		}
 		}
@@ -345,7 +358,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 				if(retriever != null) {
 					// The identity has a new "mandatory" edition number stored which we must fetch, so we restart the request because the edition number might
 					// be lower than the last one which the USKRetriever has fetched.
-					Logger.minor(this, "The current edition of the given identity is marked as not fetched, re-creating the USKRetriever for " + usk);
+					if (logMINOR) Logger.minor(this, "The current edition of the given identity is marked as not fetched, re-creating the USKRetriever for " + usk);
 					abortFetch(identity.getID());
 					retriever = null;
 				}
@@ -380,7 +393,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 				
 				long editionHint = identity.getLatestEditionHint();
 				
-				Logger.debug(this, "Updating edition hint to " + editionHint + " for " + identityID);
+				if (logDEBUG) Logger.debug(this, "Updating edition hint to " + editionHint + " for " + identityID);
 
 				mUSKManager.hintUpdate(usk, identity.getLatestEditionHint(), mClientContext);
 
@@ -398,7 +411,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 			return;
 		}
 			
-		Logger.debug(this, "Aborting fetch for identity " + identityID);
+		if (logDEBUG) Logger.debug(this, "Aborting fetch for identity " + identityID);
 		retriever.cancel(null, mClientContext);
 		mUSKManager.unsubscribeContent(retriever.getOriginalUSK(), retriever, true);
 	}
@@ -410,7 +423,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 		FetchContext fetchContext = mClient.getFetchContext();
 		fetchContext.maxSplitfileBlockRetries = -1; // retry forever
 		fetchContext.maxNonSplitfileRetries = -1; // retry forever
-		Logger.debug(this, "Trying to start fetching uri " + usk); 
+		if (logDEBUG) Logger.debug(this, "Trying to start fetching uri " + usk); 
 		return mUSKManager.subscribeContent(usk, this, true, fetchContext, RequestStarter.UPDATE_PRIORITY_CLASS, mRequestClient);
 	}
 	
@@ -426,7 +439,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	 * Stops all running requests.
 	 */
 	protected synchronized void stop() {
-		Logger.debug(this, "Trying to stop all requests");
+		if (logDEBUG) Logger.debug(this, "Trying to stop all requests");
 		
 		USKRetriever[] retrievers = mRequests.values().toArray(new USKRetriever[mRequests.size()]);		
 		int counter = 0;		 
@@ -437,7 +450,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 		}
 		mRequests.clear();
 		
-		Logger.debug(this, "Stopped " + counter + " current requests");
+		if (logDEBUG) Logger.debug(this, "Stopped " + counter + " current requests");
 	}
 
 	/**
@@ -446,7 +459,7 @@ public final class IdentityFetcher implements USKRetrieverCallback, Runnable {
 	public void onFound(USK origUSK, long edition, FetchResult result) {
 		FreenetURI realURI = origUSK.getURI().setSuggestedEdition(edition);
 		
-		Logger.debug(this, "Fetched identity: " + realURI);
+		if (logDEBUG) Logger.debug(this, "Fetched identity: " + realURI);
 		
 		Bucket bucket = null;
 		InputStream inputStream = null;
